@@ -1,0 +1,26 @@
+{
+  "system_only": false,
+  "dependencies": {
+    "system": {
+      "Arch_method": "sudo pacman -S --noconfirm",
+      "Debian_method": "sudo apt install -y",
+      "Ubuntu_method": "sudo apt install -y",
+      "check_commands": [
+       "python3"
+      ],
+      "Arch": {
+        "python3": "python3",
+      },
+      "Debian": {
+        "docker-compose": "python3",
+      },
+      "Ubuntu": {
+        "docker": "python3"
+      },
+      "Fedora": {
+        "docker": "python3"
+      },
+      "Fedora_method": "sudo dnf install -y"
+    }
+  }
+}
