@@ -3,22 +3,31 @@
   "dependencies": {
     "system": {
       "method": "sudo pacman -S --noconfirm",
-      "Arch": [
-        "distrobox",
-        ["docker", "podman"]
+      "check_commands": [
+        ["docker", "podman"],
+        "docker-compose",
+        "distrobox"
       ],
-      "Debian": [
-        "distrobox",
-        ["docker", "podman"]
-      ],
-      "Ubuntu": [
-        "distrobox",
-        ["docker", "podman"]
-      ],
-      "Fedora": [
-        "distrobox",
-        ["docker", "podman"]
-      ],
+      "Arch": {
+        "docker": ["docker", "podman"],
+        "docker-compose": "docker-compose",
+        "distrobox": "distrobox"
+      },
+      "Debian": {
+        "docker": ["docker.io", "podman"],
+        "docker-compose": "docker-compose-plugin",
+        "distrobox": "distrobox"
+      },
+      "Ubuntu": {
+        "docker": "docker.io",
+        "docker-compose": "docker-compose-plugin",
+        "distrobox": "distrobox"
+      },
+      "Fedora": {
+        "docker": "docker",
+        "docker-compose": "docker-compose",
+        "distrobox": "distrobox"
+      },
       "Fedora_method": "sudo dnf install -y"
     },
     "gitpm": [

@@ -476,22 +476,95 @@ class GitPackageManager:
         elif f'{self.distro}_method' in dependencies:
             install_method = dependencies[f'{self.distro}_method']
         
-        if self.distro not in dependencies:
-            # No dependencies for this distro
-            return True, [], install_method
+        # Check if using new format with check_commands
+        check_commands = dependencies.get('check_commands', [])
+        distro_packages = dependencies.get(self.distro, {})
         
-        distro_deps = dependencies[self.distro]
-        
-        for dep_entry in distro_deps:
-            if isinstance(dep_entry, str):
-                # Simple package name
-                if not self.check_system_package(dep_entry):
-                    missing.append(dep_entry)
-            elif isinstance(dep_entry, list):
-                # Alternative packages (e.g., [docker, podman])
-                is_installed, installed_pkg = self.check_package_alternatives(dep_entry)
-                if not is_installed:
-                    missing.append(f"({' or '.join(dep_entry)})")
+        if check_commands and isinstance(check_commands, list) and isinstance(distro_packages, dict):
+            # New format: check_commands is a list of commands to check
+            # Can be strings or arrays of alternatives (e.g., ["docker"] or [["docker", "podman"]])
+            # distro_packages maps command names to package names for this distro
+            for command_entry in check_commands:
+                if isinstance(command_entry, list):
+                    # Array of alternative commands (e.g., ["docker", "podman"])
+                    # Check if any of these commands exist
+                    is_installed, installed_cmd = self.check_package_alternatives(command_entry)
+                    if not is_installed:
+                        # None of the alternative commands exist, need to install
+                        # Use first command to look up package in distro section
+                        primary_command = command_entry[0]
+                        if primary_command in distro_packages:
+                            pkg_entry = distro_packages[primary_command]
+                            if isinstance(pkg_entry, list):
+                                missing.append(pkg_entry[0])
+                            elif isinstance(pkg_entry, str):
+                                missing.append(pkg_entry)
+                            else:
+                                missing.append(str(pkg_entry))
+                        else:
+                            # No package mapping, use first command as package name
+                            missing.append(primary_command)
+                elif isinstance(command_entry, str):
+                    # Single command to check
+                    command_found = self.check_system_package(command_entry)
+                    if not command_found:
+                        # Command not found, look up package in distro section
+                        if command_entry in distro_packages:
+                            pkg_entry = distro_packages[command_entry]
+                            if isinstance(pkg_entry, list):
+                                missing.append(pkg_entry[0])
+                            elif isinstance(pkg_entry, str):
+                                missing.append(pkg_entry)
+                            else:
+                                missing.append(str(pkg_entry))
+                        else:
+                            # Command in check list but no package mapping for this distro
+                            missing.append(command_entry)
+        elif check_commands and isinstance(check_commands, dict):
+            # Legacy format: check_commands as dict (backward compatibility)
+            for command, package_names in check_commands.items():
+                # Check if command exists
+                if not self.check_system_package(command):
+                    # Command not found, need to install one of the packages
+                    if isinstance(package_names, list):
+                        # Multiple packages can provide this command
+                        # Check which package name to use for this distro
+                        distro_pkg = None
+                        for pkg_name in package_names:
+                            if pkg_name in distro_packages:
+                                distro_pkg = distro_packages[pkg_name]
+                                break
+                        if distro_pkg:
+                            missing.append(distro_pkg)
+                        else:
+                            # Fallback: use first package name
+                            missing.append(package_names[0])
+                    else:
+                        # Single package provides this command
+                        if package_names in distro_packages:
+                            missing.append(distro_packages[package_names])
+                        else:
+                            missing.append(package_names)
+        elif self.distro in dependencies:
+            # Old format: list of packages
+            distro_deps = dependencies[self.distro]
+            if isinstance(distro_deps, list):
+                for dep_entry in distro_deps:
+                    if isinstance(dep_entry, str):
+                        # Simple package name
+                        if not self.check_system_package(dep_entry):
+                            missing.append(dep_entry)
+                    elif isinstance(dep_entry, list):
+                        # Alternative packages (e.g., [docker, podman])
+                        is_installed, installed_pkg = self.check_package_alternatives(dep_entry)
+                        if not is_installed:
+                            missing.append(f"({' or '.join(dep_entry)})")
+            elif isinstance(distro_deps, dict):
+                # Dict format but no check_commands - check each package directly
+                for pkg_name, pkg_value in distro_deps.items():
+                    if isinstance(pkg_value, str):
+                        if not self.check_system_package(pkg_value):
+                            missing.append(pkg_value)
         
         # Check if we can install packages
         has_sudo = False
@@ -621,33 +694,20 @@ class GitPackageManager:
         
         return all_satisfied, missing_system, missing_gitpm, can_install_system, gitpm_dep_info, None
     
-    def install_system_packages(self, missing: List[str], distro_deps: List, install_method: str) -> bool:
+    def install_system_packages(self, missing: List[str], dependencies: Dict, install_method: str) -> bool:
         """Install missing system packages"""
         try:
-            # Build package list
-            packages_to_install = []
-            for dep_entry in distro_deps:
-                if isinstance(dep_entry, str):
-                    if dep_entry in missing or any(dep_entry in m for m in missing):
-                        packages_to_install.append(dep_entry)
-                elif isinstance(dep_entry, list):
-                    # For alternatives, check which one is missing
-                    for alt in dep_entry:
-                        if alt in missing or any(alt in m for m in missing):
-                            # Check if any alternative is already installed
-                            is_installed, installed_pkg = self.check_package_alternatives(dep_entry)
-                            if not is_installed:
-                                # Install the first alternative
-                                packages_to_install.append(dep_entry[0])
-                            break
+            # missing already contains the package names to install
+            # Remove duplicates and clean up
+            packages_to_install = list(set([pkg.strip('()') for pkg in missing if pkg.strip()]))
             
             if not packages_to_install:
                 return True  # Nothing to install
             
-            # Parse install method (e.g., "sudo pacman -Sy")
+            # Parse install method (e.g., "sudo pacman -S --noconfirm")
             install_cmd = install_method.split()
-            # Insert package names before the last part (usually the package name placeholder)
-            install_cmd = install_cmd[:-1] + packages_to_install
+            # Append package names to the install command
+            install_cmd.extend(packages_to_install)
             
             print(f"Running: {' '.join(install_cmd)}")
             result = subprocess.run(
@@ -1020,15 +1080,15 @@ class GitPackageManager:
             if missing_system and can_install_system:
                 gitpm_json = self.load_gitpm_json(repo_path)
                 if gitpm_json and 'dependencies' in gitpm_json and 'system' in gitpm_json['dependencies']:
-                    distro_deps = gitpm_json['dependencies']['system'].get(self.distro, [])
+                    system_deps = gitpm_json['dependencies']['system']
                     # Get install method
-                    install_method = gitpm_json['dependencies']['system'].get('method', '')
+                    install_method = system_deps.get('method', '')
                     if not install_method:
-                        install_method = gitpm_json['dependencies']['system'].get(f'{self.distro}_method', '')
+                        install_method = system_deps.get(f'{self.distro}_method', '')
                     
                     if install_method:
                         print(f"\nAttempting to install missing system packages...")
-                        if self.install_system_packages(missing_system, distro_deps, install_method):
+                        if self.install_system_packages(missing_system, system_deps, install_method):
                             # Re-check dependencies
                             deps_satisfied, missing_system, missing_gitpm, _, _, _ = self.check_dependencies(repo_path)
                         else:

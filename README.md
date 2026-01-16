@@ -105,10 +105,15 @@ Repositories can include a `gitpm.json` file with dependency information:
 
 - **`system_only`**: If `true`, package can only be installed system-wide (requires `--system` flag)
 - **`dependencies.system`**: System package dependencies
-  - Distro names (Arch, Debian, Fedora, etc.) map to package lists
-  - Arrays indicate alternative packages (e.g., `["docker", "podman"]` means either is acceptable)
-  - `method`: Install command (e.g., `"sudo pacman -S --noconfirm"`)
-  - `{Distro}_method`: Per-distro install method override
+  - **`check_commands`**: Maps commands to check (e.g., `"docker"`) to package names that provide them
+    - Arrays indicate multiple packages can provide the same command (e.g., `["docker", "podman"]`)
+    - GitPM checks if the command exists (using `-v` flag), not the package name
+  - **Distro sections** (Arch, Debian, Fedora, etc.): Maps command names to distro-specific package names
+    - Example: `"docker": "docker.io"` on Debian means the `docker` command comes from the `docker.io` package
+    - This allows the same command check across distros while using correct package names per distro
+  - **`method`**: Install command (e.g., `"sudo pacman -S --noconfirm"`)
+  - **`{Distro}_method`**: Per-distro install method override
+  - **Legacy format**: Arrays are still supported for backward compatibility
 - **`dependencies.gitpm`**: GitPM package dependencies (same format as repos.conf)
 
 ## Usage
