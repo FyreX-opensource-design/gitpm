@@ -25,10 +25,10 @@ chmod +x gitpm.py
 sudo cp gitpm.py /usr/local/bin/gitpm
 ```
 
-you can also curl the script into bash.
+you can also curl the script.
 
 ```bash
-curl https://raw.githubusercontent.com/FyreX-opensource-design/gitpm/refs/heads/main/gitpm.py | bash
+curl https://raw.githubusercontent.com/FyreX-opensource-design/gitpm/refs/heads/main/gitpm.py && ./gitpm install gitpm
 ```
 
 ## Configuration
