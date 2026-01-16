@@ -1,0 +1,53 @@
+# Git Package Manager - Repository Configuration
+# Add one git repository URL per line
+# Supports various formats:
+#   - https://github.com/user/repo.git
+#   - git@github.com:user/repo.git
+#   - user/repo (assumes GitHub)
+#
+# Extended format for branch and custom name:
+#   - url,branch,name
+#   - Example: https://github.com/user/repo.git,develop,my-app
+#   - This allows multiple installations from the same repo with different branches
+#
+# Multiple Config Files:
+#   - The script will automatically load all files matching repos*.conf from:
+#     * User config: ~/.config/gitpm/repos*.conf
+#     * System config: /etc/xdg/gitpm/repos*.conf
+#   - Examples: repos.conf, repos-dev.conf, repos-system.conf
+#   - System configs are loaded first, then user configs
+#   - Use --show-source flag with 'list' command to see which file each repo comes from
+#     (system configs will be marked with [system] prefix)
+#
+# Repository Compatibility:
+#   - Repositories must include a marker file to be considered compatible:
+#     * .gitpm (empty file is fine)
+#     * gitpm.json (can contain metadata)
+#     * .gitpm.json (can contain metadata)
+#   - The script will check for this marker before installation
+#   - You can override and install anyway with --force flag
+#
+# Setup/Removal/Update/Check Scripts:
+#   - Repositories can include setup, removal, update, and check scripts:
+#     * User installs: setup-user.sh, install-user.sh, remove-user.sh, uninstall-user.sh, 
+#                      update-user.sh, upgrade-user.sh, check-user.sh, check-updates-user.sh
+#     * System installs: setup-system.sh, install-system.sh, remove-system.sh, uninstall-system.sh,
+#                       update-system.sh, upgrade-system.sh, check-system.sh, check-updates-system.sh
+#     * Generic (fallback): setup.sh, install.sh, remove.sh, uninstall.sh, 
+#                         update.sh, upgrade.sh, check.sh, check-updates.sh
+#   - Python scripts (.py) are also supported: setup-user.py, install-system.py, update.py, check.py, etc.
+#   - Scripts are executed automatically during install/remove/update operations
+#   - Check scripts run when checking for updates (--check flag)
+#     * Exit code 0 = no updates available
+#     * Exit code 1 = updates available
+#     * Other exit codes = error (falls back to git commit comparison)
+#   - Update scripts run when actually updating packages
+
+# Example repositories:
+# https://github.com/user/app1.git
+# git@github.com:anotheruser/app1.git
+# https://gitlab.com/user/app2.git
+# https://github.com/user/repo.git,develop,dev-version
+# https://github.com/user/repo.git,main,stable-version
+
+https://github.com/FyreX-opensource-design/Depender

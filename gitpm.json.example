@@ -1,0 +1,30 @@
+{
+  "system_only": false,
+  "dependencies": {
+    "system": {
+      "method": "sudo pacman -S --noconfirm",
+      "Arch": [
+        "distrobox",
+        ["docker", "podman"]
+      ],
+      "Debian": [
+        "distrobox",
+        ["docker", "podman"]
+      ],
+      "Ubuntu": [
+        "distrobox",
+        ["docker", "podman"]
+      ],
+      "Fedora": [
+        "distrobox",
+        ["docker", "podman"]
+      ],
+      "Fedora_method": "sudo dnf install -y"
+    },
+    "gitpm": [
+      "https://github.com/user/dependency1.git",
+      "https://github.com/user/dependency2.git,branch,custom-name"
+    ]
+  }
+}
+
