@@ -9,10 +9,10 @@
        "python3"
       ],
       "Arch": {
-        "python3": "python3",
+        "python3": "python3"
       },
       "Debian": {
-        "docker-compose": "python3",
+        "docker-compose": "python3"
       },
       "Ubuntu": {
         "docker": "python3"
