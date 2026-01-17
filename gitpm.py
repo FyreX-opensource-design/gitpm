@@ -580,48 +580,97 @@ class GitPackageManager:
         
         return len(missing) == 0, missing, install_method
     
-    def check_gitpm_dependencies(self, gitpm_deps: List[str]) -> Tuple[bool, List[str], List[Dict], List[str]]:
+    def check_gitpm_dependencies(self, gitpm_deps: List) -> Tuple[bool, List[str], List[Dict], List[str]]:
         """Check gitpm package dependencies
+        Supports alternatives: can be a list of strings (alternatives) or a single string
         Returns: (all_satisfied, missing_packages, dependency_info, system_only_deps)
         """
         missing = []
         dep_info = []
         system_only_deps = []
         
-        for dep in gitpm_deps:
-            # Parse dependency (can be in repos.conf format: url,branch,name)
-            parts = [p.strip() for p in dep.split(',')]
-            if len(parts) > 2 and parts[2]:
-                dep_name = parts[2]
-                dep_url = parts[0]
-                dep_branch = parts[1] if len(parts) > 1 and parts[1] else None
-            else:
-                # Extract name from URL
-                _, _, repo_name = self.parse_repo_url(parts[0])
-                dep_name = repo_name
-                dep_url = parts[0]
-                dep_branch = parts[1] if len(parts) > 1 and parts[1] else None
-            
-            # Check if dependency is installed
-            if dep_name not in self.installed:
-                missing.append(dep_name)
-                dep_info.append({
-                    'name': dep_name,
-                    'url': dep_url,
-                    'branch': dep_branch
-                })
+        for dep_entry in gitpm_deps:
+            if isinstance(dep_entry, list):
+                # Array of alternatives - check if any are installed
+                found_alternative = False
+                for dep in dep_entry:
+                    # Parse dependency (can be in repos.conf format: url,branch,name)
+                    parts = [p.strip() for p in dep.split(',')]
+                    if len(parts) > 2 and parts[2]:
+                        dep_name = parts[2]
+                    else:
+                        # Extract name from URL
+                        _, _, repo_name = self.parse_repo_url(parts[0])
+                        dep_name = repo_name
+                    
+                    # Check if this alternative is installed
+                    if dep_name in self.installed:
+                        found_alternative = True
+                        # Check if dependency requires system but we're doing user install
+                        if not self.system:
+                            dep_path = Path(self.installed[dep_name]['path'])
+                            dep_json, _ = self.load_gitpm_json(dep_path)
+                            if dep_json and dep_json.get('system_only', False):
+                                system_only_deps.append(dep_name)
+                        break
                 
-                # Check if dependency requires system install
-                # We need to check the dependency's gitpm.json to see if it's system_only
-                # For now, we'll check this when we try to install it
-            else:
-                # Dependency is installed, check if it requires system but we're doing user install
-                if not self.system:
-                    # Check the installed dependency's gitpm.json
-                    dep_path = Path(self.installed[dep_name]['path'])
-                    dep_json, _ = self.load_gitpm_json(dep_path)
-                    if dep_json and dep_json.get('system_only', False):
-                        system_only_deps.append(dep_name)
+                if not found_alternative:
+                    # None of the alternatives are installed
+                    # Use first alternative as the one to install
+                    primary_dep = dep_entry[0]
+                    parts = [p.strip() for p in primary_dep.split(',')]
+                    if len(parts) > 2 and parts[2]:
+                        dep_name = parts[2]
+                        dep_url = parts[0]
+                        dep_branch = parts[1] if len(parts) > 1 and parts[1] else None
+                    else:
+                        _, _, repo_name = self.parse_repo_url(parts[0])
+                        dep_name = repo_name
+                        dep_url = parts[0]
+                        dep_branch = parts[1] if len(parts) > 1 and parts[1] else None
+                    
+                    missing.append(dep_name)
+                    dep_info.append({
+                        'name': dep_name,
+                        'url': dep_url,
+                        'branch': dep_branch,
+                        'alternatives': dep_entry
+                    })
+            elif isinstance(dep_entry, str):
+                # Single dependency
+                # Parse dependency (can be in repos.conf format: url,branch,name)
+                parts = [p.strip() for p in dep_entry.split(',')]
+                if len(parts) > 2 and parts[2]:
+                    dep_name = parts[2]
+                    dep_url = parts[0]
+                    dep_branch = parts[1] if len(parts) > 1 and parts[1] else None
+                else:
+                    # Extract name from URL
+                    _, _, repo_name = self.parse_repo_url(parts[0])
+                    dep_name = repo_name
+                    dep_url = parts[0]
+                    dep_branch = parts[1] if len(parts) > 1 and parts[1] else None
+                
+                # Check if dependency is installed
+                if dep_name not in self.installed:
+                    missing.append(dep_name)
+                    dep_info.append({
+                        'name': dep_name,
+                        'url': dep_url,
+                        'branch': dep_branch
+                    })
+                    
+                    # Check if dependency requires system install
+                    # We need to check the dependency's gitpm.json to see if it's system_only
+                    # For now, we'll check this when we try to install it
+                else:
+                    # Dependency is installed, check if it requires system but we're doing user install
+                    if not self.system:
+                        # Check the installed dependency's gitpm.json
+                        dep_path = Path(self.installed[dep_name]['path'])
+                        dep_json, _ = self.load_gitpm_json(dep_path)
+                        if dep_json and dep_json.get('system_only', False):
+                            system_only_deps.append(dep_name)
         
         return len(missing) == 0, missing, dep_info, system_only_deps
     
@@ -1098,13 +1147,61 @@ class GitPackageManager:
             if missing_gitpm and gitpm_dep_info:
                 print(f"\nInstalling missing GitPM dependencies: {', '.join(missing_gitpm)}")
                 for dep in gitpm_dep_info:
-                    dep_name = dep['name']
-                    dep_url = dep['url']
+                    # Check if this dependency has alternatives
+                    if 'alternatives' in dep and dep['alternatives']:
+                        # Prompt user to choose which alternative to install
+                        alternatives = dep['alternatives']
+                        options = []
+                        for alt_dep in alternatives:
+                            # Parse each alternative
+                            parts = [p.strip() for p in alt_dep.split(',')]
+                            alt_url_full, alt_user, alt_repo = self.parse_repo_url(parts[0])
+                            if len(parts) > 2 and parts[2]:
+                                alt_name = parts[2]
+                                alt_url = alt_url_full if alt_url_full else parts[0]
+                                alt_branch = parts[1] if len(parts) > 1 and parts[1] else None
+                            else:
+                                alt_name = alt_repo
+                                alt_url = alt_url_full if alt_url_full else parts[0]
+                                alt_branch = parts[1] if len(parts) > 1 and parts[1] else None
+                            
+                            options.append({
+                                'name': alt_name,
+                                'user': alt_user,
+                                'url': alt_url,
+                                'branch': alt_branch
+                            })
+                        
+                        # Prompt user to select
+                        selected = self.prompt_selection(
+                            options,
+                            f"Multiple alternatives available for dependency. Choose one:"
+                        )
+                        if not selected:
+                            print("Error: No alternative selected for dependency", file=sys.stderr)
+                            if cloned and repo_path.exists():
+                                import shutil
+                                try:
+                                    shutil.rmtree(repo_path)
+                                    print(f"Cleaned up cloned directory: {repo_path}", file=sys.stderr)
+                                except Exception as e:
+                                    print(f"Warning: Could not clean up directory {repo_path}: {e}", file=sys.stderr)
+                            return False
+                        
+                        # Use selected alternative
+                        dep_name = selected['name']
+                        dep_url = selected['url']
+                        dep_branch = selected.get('branch')
+                    else:
+                        # Single dependency, no alternatives
+                        dep_name = dep['name']
+                        dep_url = dep['url']
+                        dep_branch = dep.get('branch')
                     
                     # Check if dependency requires system install
                     # We need to check the dependency's gitpm.json before installing
                     # Do a quick compatibility check to get the gitpm.json
-                    is_compatible, compat_msg = self.check_repo_compatibility(dep_url, dep.get('branch'))
+                    is_compatible, compat_msg = self.check_repo_compatibility(dep_url, dep_branch)
                     if is_compatible:
                         # Create temp clone to check system_only
                         import tempfile
@@ -1113,8 +1210,8 @@ class GitPackageManager:
                         temp_repo_path = Path(temp_dir) / "repo"
                         try:
                             clone_cmd = ['git', 'clone', '--depth', '1', '--no-checkout', dep_url, str(temp_repo_path)]
-                            if dep.get('branch'):
-                                clone_cmd.extend(['--branch', dep['branch']])
+                            if dep_branch:
+                                clone_cmd.extend(['--branch', dep_branch])
                             subprocess.run(clone_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
                             subprocess.run(['git', 'checkout', 'HEAD', '--'], cwd=temp_repo_path, 
                                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
@@ -1304,12 +1401,41 @@ class GitPackageManager:
                         capture_output=True
                     )
                 
-                # Pull latest changes
-                subprocess.run(
-                    ['git', 'pull'],
+                # Check for local changes that might conflict
+                status_result = subprocess.run(
+                    ['git', 'status', '--porcelain'],
                     cwd=repo_path,
-                    check=True
+                    capture_output=True,
+                    text=True
                 )
+                has_local_changes = bool(status_result.stdout.strip())
+                
+                if has_local_changes:
+                    print(f"Warning: Local changes detected in '{name}'. Resetting to remote state...")
+                    # Reset to match remote (discard local changes)
+                    # This is appropriate for a package manager - installed packages shouldn't be modified
+                    remote_ref = f'origin/{branch}' if branch else 'origin/HEAD'
+                    subprocess.run(
+                        ['git', 'reset', '--hard', remote_ref],
+                        cwd=repo_path,
+                        check=True,
+                        capture_output=True
+                    )
+                    # Clean any untracked files
+                    subprocess.run(
+                        ['git', 'clean', '-fd'],
+                        cwd=repo_path,
+                        check=True,
+                        capture_output=True
+                    )
+                else:
+                    # No local changes, safe to pull
+                    subprocess.run(
+                        ['git', 'pull'],
+                        cwd=repo_path,
+                        check=True,
+                        capture_output=True
+                    )
                 
                 # Check for update script first, then fall back to setup script
                 scripts = self.check_scripts(repo_path)
@@ -1408,9 +1534,9 @@ class GitPackageManager:
         print("-" * 100)
         
         for name, info in sorted(self.installed.items()):
-            user = info.get('user', 'unknown')
-            branch = info.get('branch', 'default')
-            path = info.get('path', 'unknown')
+            user = info.get('user') or 'unknown'
+            branch = info.get('branch') or 'default'
+            path = info.get('path') or 'unknown'
             print(f"{name:<25} {user:<20} {branch:<15} {path:<40}")
     
     def list_available(self, search: Optional[str] = None, show_source: bool = False):
