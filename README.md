@@ -25,17 +25,6 @@ chmod +x gitpm.py
 sudo cp gitpm.py /usr/local/bin/gitpm
 ```
 
-you can also do this....
-
-```bash
-wget https://raw.githubusercontent.com/FyreX-opensource-design/gitpm/refs/heads/main/gitpm.py && mkdir -p ~/.config/gitpm && wget -P ~/.config/gitpm/ https://raw.githubusercontent.com/FyreX-opensource-design/gitpm/refs/heads/main/repos-default.conf && chmod +x ./gitpm.py && ./gitpm.py install gitpm
-```
-
-or this for system wide installs...
-```bash
-sudo wget https://raw.githubusercontent.com/FyreX-opensource-design/gitpm/refs/heads/main/gitpm.py && sudo mkdir -p /etc/xdg/gitpm && sudo wget -P /etc/xdg/gitpm/ https://raw.githubusercontent.com/FyreX-opensource-design/gitpm/refs/heads/main/repos-default.conf && chmod +x ./gitpm.py && ./gitpm.py install --system gitpm
-```
-
 ## Configuration
 
 ### Repository Configuration
@@ -90,36 +79,27 @@ Repositories can include a `gitpm.json` file with dependency information:
   "dependencies": {
     "system": {
       "method": "sudo pacman -S --noconfirm",
-      "check_commands": [
-        ["docker", "podman"],
-        "docker-compose",
-        "distrobox"
+      "Arch": [
+        "distrobox",
+        ["docker", "podman"]
       ],
-      "Arch": {
-        "docker": ["docker", "podman"],
-        "docker-compose": "docker-compose",
-        "distrobox": "distrobox"
-      },
-      "Debian": {
-        "docker": ["docker.io", "podman"],
-        "docker-compose": "docker-compose-plugin",
-        "distrobox": "distrobox"
-      },
-      "Ubuntu": {
-        "docker": "docker.io",
-        "docker-compose": "docker-compose-plugin",
-        "distrobox": "distrobox"
-      },
-      "Fedora": {
-        "docker": "docker",
-        "docker-compose": "docker-compose",
-        "distrobox": "distrobox"
-      },
-      "Fedora_method": "sudo dnf install -y"
+      "Debian": [
+        "distrobox",
+        ["docker", "podman"]
+      ],
+      "Fedora_method": "sudo dnf install -y",
+      "Fedora": [
+        "distrobox",
+        ["docker", "podman"]
+      ]
     },
     "gitpm": [
       "https://github.com/user/dependency1.git",
-      "https://github.com/user/dependency2.git,branch,custom-name"
+      "https://github.com/user/dependency2.git,branch,custom-name",
+      [
+        "https://github.com/user/alt1.git",
+        "https://github.com/user/alt2.git,branch,alt-name"
+      ]
     ]
   }
 }
@@ -139,6 +119,9 @@ Repositories can include a `gitpm.json` file with dependency information:
   - **`{Distro}_method`**: Per-distro install method override
   - **Legacy format**: Arrays are still supported for backward compatibility
 - **`dependencies.gitpm`**: GitPM package dependencies (same format as repos.conf)
+  - Can be a string: `"https://github.com/user/dep.git"`
+  - Can be an array of alternatives: `["https://github.com/user/alt1.git", "https://github.com/user/alt2.git"]`
+  - If an array, any one of the packages satisfies the dependency
 
 ## Usage
 
