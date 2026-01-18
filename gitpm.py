@@ -721,11 +721,18 @@ class GitPackageManager:
                 can_install_system = sudo_check.returncode == 0 or os.geteuid() == 0
         
         # Check gitpm dependencies (only if 'gitpm' key exists)
+        # Check both at dependencies level and inside system (for backwards compatibility)
         system_only_deps = []
+        gitpm_deps = None
         if 'gitpm' in gitpm_json['dependencies']:
-            all_satisfied_gitpm, missing, dep_info, system_only = self.check_gitpm_dependencies(
-                gitpm_json['dependencies']['gitpm']
-            )
+            gitpm_deps = gitpm_json['dependencies']['gitpm']
+        elif 'system' in gitpm_json['dependencies'] and 'gitpm' in gitpm_json['dependencies']['system']:
+            # Handle case where gitpm is incorrectly nested inside system
+            gitpm_deps = gitpm_json['dependencies']['system']['gitpm']
+            print("Warning: 'gitpm' dependencies should be at 'dependencies.gitpm', not 'dependencies.system.gitpm'", file=sys.stderr)
+        
+        if gitpm_deps:
+            all_satisfied_gitpm, missing, dep_info, system_only = self.check_gitpm_dependencies(gitpm_deps)
             missing_gitpm = missing
             gitpm_dep_info = dep_info
             system_only_deps = system_only
@@ -919,36 +926,22 @@ class GitPackageManager:
                 except Exception:
                     pass  # Ignore cleanup errors
     
-    def install(self, name: str, skip_compatibility_check: bool = False, skip_dependency_check: bool = False) -> bool:
-        """Install a package by name"""
-        # Find matching repos
-        matches = self.find_repos_by_name(name)
-        
-        if not matches:
-            print(f"Error: No repository found with name '{name}'")
-            return False
-        
-        # Handle duplicates
-        selected = self.prompt_selection(
-            matches,
-            f"Multiple repositories found with name '{name}':"
-        )
-        
-        if not selected:
-            print("Installation cancelled.")
-            return False
-        
-        repo_url = selected['url']
-        branch = selected.get('branch')
-        display_name = selected['name']  # Custom name or repo name
+    def install_from_url(self, repo_url: str, install_name: str, branch: Optional[str] = None, 
+                        skip_compatibility_check: bool = False, skip_dependency_check: bool = False,
+                        skip_reinstall_prompt: bool = False) -> bool:
+        """Install a package directly from a URL
+        This is used for installing gitpm dependencies that may not be in the config file
+        """
         _, user, repo_name = self.parse_repo_url(repo_url)
         
-        # Use custom name for folder if provided, otherwise use repo name
-        install_name = display_name
         repo_path = self.apps_dir / install_name
         
         # Check if already installed
         if install_name in self.installed:
+            if skip_reinstall_prompt:
+                # For dependencies, silently skip if already installed
+                print(f"'{install_name}' is already installed, skipping...")
+                return True
             print(f"'{install_name}' is already installed at {self.installed[install_name]['path']}")
             response = input("Reinstall? (y/N): ").strip().lower()
             if response != 'y':
@@ -1238,9 +1231,11 @@ class GitPackageManager:
                         # (We already checked above, but double-check)
                         pass
                     
-                    # For now, install with same system flag as parent
-                    # In the future, we could auto-detect and switch
-                    if not self.install(dep_name, skip_compatibility_check=False, skip_dependency_check=True):
+                    # Install dependency directly from URL
+                    if not self.install_from_url(dep_url, dep_name, dep_branch, 
+                                                 skip_compatibility_check=False, 
+                                                 skip_dependency_check=True,
+                                                 skip_reinstall_prompt=True):
                         print(f"Error: Failed to install dependency '{dep_name}'", file=sys.stderr)
                         # Clean up cloned directory
                         if cloned and repo_path.exists():
@@ -1311,6 +1306,33 @@ class GitPackageManager:
         branch_info = f" (branch: {branch})" if branch else ""
         print(f"Successfully installed '{install_name}'{branch_info}")
         return True
+    
+    def install(self, name: str, skip_compatibility_check: bool = False, skip_dependency_check: bool = False) -> bool:
+        """Install a package by name from config file"""
+        # Find matching repos
+        matches = self.find_repos_by_name(name)
+        
+        if not matches:
+            print(f"Error: No repository found with name '{name}'")
+            return False
+        
+        # Handle duplicates
+        selected = self.prompt_selection(
+            matches,
+            f"Multiple repositories found with name '{name}':"
+        )
+        
+        if not selected:
+            print("Installation cancelled.")
+            return False
+        
+        repo_url = selected['url']
+        branch = selected.get('branch')
+        display_name = selected['name']  # Custom name or repo name
+        
+        # Use install_from_url to do the actual installation
+        return self.install_from_url(repo_url, display_name, branch, 
+                                     skip_compatibility_check, skip_dependency_check)
     
     def update(self, name: Optional[str] = None, check_only: bool = False) -> bool:
         """Update installed packages
